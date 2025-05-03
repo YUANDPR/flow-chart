@@ -334,7 +334,7 @@ class MainWindow(QMainWindow):
         ]
         for lt in line_types:
             action = QAction(lt.value.capitalize(), self)
-            action.triggered.connect(lambda _: self.set_line_type(lt))
+            action.triggered.connect(lambda _,lt=lt: self.set_line_type(lt))
             toolbar.addAction(action)
 
         # 控制面板
