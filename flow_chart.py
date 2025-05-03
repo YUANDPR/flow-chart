@@ -221,14 +221,19 @@ class Canvas(QGraphicsView):
             self.scene.addLine(-1000, y, 1000, y, grid_pen)
 
     def contextMenuEvent(self, event):
+        # 转换坐标系并检查该位置是否有图元
         item = self.itemAt(event.pos())
-        if isinstance(item, DraggableBlock):
-            return  # Block自己会处理菜单
-        menu = QMenu()
-        new_block_action = menu.addAction("新建方块")
-        action = menu.exec_(self.mapToGlobal(event.pos()))
-        if action == new_block_action:
-            self.create_new_block(event.pos())
+
+        if item is None:
+            # 如果当前位置没有图元，则显示画布的菜单
+            menu = QMenu()
+            new_block_action = menu.addAction("新建方块")
+            action = menu.exec_(self.mapToGlobal(event.pos()))
+            if action == new_block_action:
+                self.create_new_block(event.pos())
+        else:
+            # 否则，允许图元自行处理其上下文菜单事件
+            super().contextMenuEvent(event)
 
     def create_new_block(self, pos):
         dialog = BlockEditDialog()
@@ -329,7 +334,7 @@ class MainWindow(QMainWindow):
         ]
         for lt in line_types:
             action = QAction(lt.value.capitalize(), self)
-            action.triggered.connect(lambda _, lt=lt: self.set_line_type(lt))
+            action.triggered.connect(lambda _: self.set_line_type(lt))
             toolbar.addAction(action)
 
         # 控制面板
