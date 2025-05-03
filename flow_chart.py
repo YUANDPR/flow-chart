@@ -211,9 +211,9 @@ class Canvas(QGraphicsView):
         self.dragging_block = None
         self.preview_line = None
         self.current_line_type = LineType.SINGLE
-        self._draw_grid()
+        self.draw_grid()
 
-    def _draw_grid(self):
+    def draw_grid(self):
         grid_pen = QPen(QColor(220, 220, 220), 1, Qt.DotLine)
         for x in range(-1000, 1000, 20):
             self.scene.addLine(x, -1000, x, 1000, grid_pen)
@@ -405,6 +405,7 @@ class MainWindow(QMainWindow):
             modules_df = pd.read_excel(path, sheet_name="Modules")
             self.canvas.scene.clear()
             self.canvas.blocks = []
+            self.canvas.draw_grid()
             id_map = {}
             for _, row in modules_df.iterrows():
                 block = DraggableBlock(
