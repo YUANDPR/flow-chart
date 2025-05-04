@@ -1,6 +1,7 @@
 import sys
 import os
 import pandas as pd
+import random
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem,
     QMenu, QAction, QVBoxLayout, QWidget, QPushButton, QFileDialog, QGraphicsTextItem,
@@ -19,10 +20,49 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+def generate_scattered_position(placed_positions, width, height,
+                                center=(0, 0),
+                                spread=1000, spacing=200):
+    """
+    在指定区域内生成一个不与已有矩形重叠的 (x, y) 位置。
+
+    参数:
+        placed_positions: 已放置的 (x, y, w, h) 列表
+        width, height: 当前模块的宽高
+        center: 分布中心点 (x, y)
+        spread: 随机分布范围（半径）
+        spacing: 模块之间最小间距
+
+    返回:
+        (x, y): 合适的位置
+    """
+    cx, cy = center
+    attempts = 0
+    # 第一个模块直接放在中心
+    if not placed_positions:
+        return cx, cy
+    while attempts < 500:
+        x = cx + random.randint(-spread, spread)
+        y = cy + random.randint(-spread, spread)
+        if not is_overlapping(x, y, width, height, placed_positions, spacing):
+            return x, y
+        attempts += 1
+    # 如果找不到合适位置，返回中心点
+    return cx, cy
+
+def is_overlapping(x, y, width, height, placed_positions, spacing=20):
+    for px, py, pw, ph in placed_positions:
+        # 添加 spacing 边距检查
+        if not (x + width < px - spacing or     # 当前模块在已有模块左边
+                x > px + pw + spacing or         # 当前模块在已有模块右边
+                y + height < py - spacing or     # 当前模块在已有模块上边
+                y > py + ph + spacing):          # 当前模块在已有模块下边
+            return True
+    return False
 
 # ====================== 枚举定义 ======================
 class LineType(Enum):
-    SINGLE = "虚线"  # 黑色虚线
+    SINGLE = "单实线"  # 黑色实线线
     DOUBLE = "双实线"  # 绿色双实线
     TRIPLE = "三实线"  # 黄色三实线
     QUADRUPLE = "四实线"  # 红色四实线
@@ -44,14 +84,31 @@ class LineType(Enum):
         }[self]
 
     def get_style(self):
-        return Qt.DashLine if self == LineType.SINGLE else Qt.SolidLine
+        return Qt.SolidLine if self == LineType.SINGLE else Qt.SolidLine
 
+    def to_number(self):
+        mapping = {
+            LineType.SINGLE: 1,
+            LineType.DOUBLE: 2,
+            LineType.TRIPLE: 3,
+            LineType.QUADRUPLE: 4
+        }
+        return mapping[self]
+
+    def from_number(number):
+        mapping = {
+            1: LineType.SINGLE,
+            2: LineType.DOUBLE,
+            3: LineType.TRIPLE,
+            4: LineType.QUADRUPLE
+        }
+        return mapping[number]
 
 # ====================== 方块编辑对话框 ======================
 class BlockEditDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("工艺属性")
+        self.setWindowTitle("工作组属性")
         layout = QFormLayout()
 
         self.name_edit = QLineEdit()
@@ -121,7 +178,7 @@ class DraggableBlock(QGraphicsRectItem):
         if not self.isSelected():
             self.setSelected(True)
         menu = QMenu()
-        edit_action = menu.addAction("编辑工艺")
+        edit_action = menu.addAction("编辑工作组")
         delete_action = menu.addAction("删除")
         action = menu.exec_(event.screenPos())
 
@@ -138,7 +195,7 @@ class DraggableBlock(QGraphicsRectItem):
         dialog.height_edit.setText(str(self.rect().height()))
 
         if dialog.exec_() == QDialog.Accepted:
-            # 更新工艺属性
+            # 更新工作组属性
             self.name = dialog.name_edit.text()
             new_id = int(dialog.id_edit.text())
             new_width = float(dialog.width_edit.text())
@@ -239,7 +296,7 @@ class Canvas(QGraphicsView):
         if item is None:
             # 如果当前位置没有图元，则显示画布的菜单
             menu = QMenu()
-            new_block_action = menu.addAction("新建工艺")
+            new_block_action = menu.addAction("新建工作组")
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == new_block_action:
                 self.create_new_block(event.pos())
@@ -333,7 +390,7 @@ class MainWindow(QMainWindow):
         self._init_ui()
 
     def _init_ui(self):
-        self.setWindowTitle("重大工艺流程图工具")
+        self.setWindowTitle("重大工作组流程图工具")
         self.setGeometry(100, 100, 1200, 800)
         self.setWindowIcon(QIcon(resource_path("logo.png")))  # 替换为你的图标文件路径
         # 工具栏
@@ -396,8 +453,8 @@ class MainWindow(QMainWindow):
             modules = []
             for block in self.canvas.blocks:
                 modules.append({
-                    "ID": block.id,
-                    "Name": block.name,
+                    "序号": block.id,
+                    "group": block.name,
                     "X": block.x(),
                     "Y": block.y(),
                     "Width": block.rect().width(),
@@ -409,15 +466,15 @@ class MainWindow(QMainWindow):
             for item in self.canvas.scene.items():
                 if isinstance(item, Connection):
                     connections.append({
-                        "StartID": item.start_block.id,
-                        "EndID": item.end_block.id,
-                        "Type": item.line_type.value
+                        "起始编号": item.start_block.id,
+                        "结束编号": item.end_block.id,
+                        "线型": item.line_type.to_number()
                     })
 
             # 写入Excel
             with pd.ExcelWriter(file_path) as writer:
-                pd.DataFrame(modules).to_excel(writer, sheet_name="Modules", index=False)
-                pd.DataFrame(connections).to_excel(writer, sheet_name="Connections", index=False)
+                pd.DataFrame(modules).to_excel(writer, sheet_name="group", index=False)
+                pd.DataFrame(connections).to_excel(writer, sheet_name="relation", index=False)
 
             QMessageBox.information(self, "导出成功", f"数据已保存到\n{file_path}")
 
@@ -430,33 +487,54 @@ class MainWindow(QMainWindow):
                 self, "打开文件", "", "Excel文件 (*.xlsx)")
             if not path:
                 return
+
+            CENTER_X, CENTER_Y = 0, 0  # 分布中心点
+            SPREAD_RADIUS = 800  # 分散半径
+            MIN_SPACING = 100  # 模块之间最小间距
+
             # 读取模块
-            modules_df = pd.read_excel(path, sheet_name="Modules")
+            modules_df = pd.read_excel(path, sheet_name="group")
             self.canvas.scene.clear()
             self.canvas.blocks = []
             self.canvas.draw_grid()
             id_map = {}
+            placed_positions = []
             for _, row in modules_df.iterrows():
-                block = DraggableBlock(
-                    name=row["Name"],
-                    x=row["X"],
-                    y=row["Y"],
-                    width=row.get("Width", 100),
-                    height=row.get("Height", 60),
-                    block_id=row["ID"]
-                )
+                block_id = row["序号"]
+                name = row.get("group", "未知模块")
+                x = row.get("X", None)
+                y = row.get("Y", None)
+                width = row.get("Width", 100)
+                height = row.get("Height", 60)
+
+                # 如果不存在 X/Y/Width/Height 列，则使用默认值
+                if x is None or y is None:
+                    x, y = generate_scattered_position(
+                        placed_positions, width, height,
+                        center=(CENTER_X, CENTER_Y),
+                        spread=SPREAD_RADIUS,
+                        spacing=MIN_SPACING
+                    )
+
+
+                block = DraggableBlock(name, x, y, width, height, block_id=block_id)
                 self.canvas.scene.addItem(block)
                 self.canvas.blocks.append(block)
-                id_map[row["ID"]] = block
+                id_map[block.id] = block
+                # 最后再加入 placed_positions
+                placed_positions.append((x, y, width, height))
+
             # 读取连接
-            connections_df = pd.read_excel(path, sheet_name="Connections")
+            connections_df = pd.read_excel(path, sheet_name="relation")
             for _, row in connections_df.iterrows():
-                start_block = id_map[row["StartID"]]
-                end_block = id_map[row["EndID"]]
+                start_block = id_map[row["起始编号"]]
+                end_block = id_map[row["结束编号"]]
+                line_type_number = int(row["线型"])  # 假设 Excel 中列名为 "线型"
+                line_type = LineType.from_number(line_type_number)
                 connection = Connection(
                     start_block,
                     end_block,
-                    LineType(row["Type"])
+                    line_type
                 )
                 self.canvas.scene.addItem(connection)
                 # 双向绑定
@@ -466,6 +544,7 @@ class MainWindow(QMainWindow):
                                     f"已导入 {len(modules_df)} 个模块和 {len(connections_df)} 条连线")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导入失败: {str(e)}")
+
 
 
 if __name__ == "__main__":
