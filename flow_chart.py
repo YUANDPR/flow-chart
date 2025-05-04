@@ -1,4 +1,5 @@
 import sys
+import os
 import pandas as pd
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem,
@@ -7,8 +8,16 @@ from PyQt5.QtWidgets import (
     QGraphicsLineItem
 )
 from PyQt5.QtCore import Qt, QPointF, QLineF, QRectF, QSizeF
-from PyQt5.QtGui import QBrush, QPen, QColor, QPainter, QTransform, QCursor, QPainterPath
+from PyQt5.QtGui import QBrush, QPen, QColor, QPainter, QTransform, QCursor, QPainterPath, QIcon
 from enum import Enum
+
+def resource_path(relative_path):
+    """ 获取资源文件的绝对路径，用于 PyInstaller 打包后的访问 """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 
 # ====================== 枚举定义 ======================
@@ -42,7 +51,7 @@ class LineType(Enum):
 class BlockEditDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("方块属性")
+        self.setWindowTitle("工艺属性")
         layout = QFormLayout()
 
         self.name_edit = QLineEdit()
@@ -112,11 +121,14 @@ class DraggableBlock(QGraphicsRectItem):
         if not self.isSelected():
             self.setSelected(True)
         menu = QMenu()
-        edit_action = menu.addAction("编辑方块")
+        edit_action = menu.addAction("编辑工艺")
+        delete_action = menu.addAction("删除")
         action = menu.exec_(event.screenPos())
 
         if action == edit_action:
             self.edit_properties()
+        if action == delete_action:
+            self.delete_block()
 
     def edit_properties(self):
         dialog = BlockEditDialog()
@@ -126,7 +138,7 @@ class DraggableBlock(QGraphicsRectItem):
         dialog.height_edit.setText(str(self.rect().height()))
 
         if dialog.exec_() == QDialog.Accepted:
-            # 更新方块属性
+            # 更新工艺属性
             self.name = dialog.name_edit.text()
             new_id = int(dialog.id_edit.text())
             new_width = float(dialog.width_edit.text())
@@ -227,7 +239,7 @@ class Canvas(QGraphicsView):
         if item is None:
             # 如果当前位置没有图元，则显示画布的菜单
             menu = QMenu()
-            new_block_action = menu.addAction("新建方块")
+            new_block_action = menu.addAction("新建工艺")
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == new_block_action:
                 self.create_new_block(event.pos())
@@ -321,9 +333,9 @@ class MainWindow(QMainWindow):
         self._init_ui()
 
     def _init_ui(self):
-        self.setWindowTitle("智能框图工具")
+        self.setWindowTitle("重大工艺流程图工具")
         self.setGeometry(100, 100, 1200, 800)
-
+        self.setWindowIcon(QIcon(resource_path("logo.png")))  # 替换为你的图标文件路径
         # 工具栏
         toolbar = self.addToolBar("工具")
         line_types = [
@@ -367,6 +379,19 @@ class MainWindow(QMainWindow):
 
     def _export(self):
         try:
+            # 弹出保存文件对话框
+            options = QFileDialog.Options()
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "保存文件",
+                "diagram.xlsx",  # 默认文件名
+                "Excel 文件 (*.xlsx)",  # 文件类型过滤
+                options=options
+            )
+
+            if not file_path:
+                return  # 用户取消操作
+
             # 收集模块数据
             modules = []
             for block in self.canvas.blocks:
@@ -378,6 +403,7 @@ class MainWindow(QMainWindow):
                     "Width": block.rect().width(),
                     "Height": block.rect().height()
                 })
+
             # 收集连接数据
             connections = []
             for item in self.canvas.scene.items():
@@ -387,11 +413,14 @@ class MainWindow(QMainWindow):
                         "EndID": item.end_block.id,
                         "Type": item.line_type.value
                     })
+
             # 写入Excel
-            with pd.ExcelWriter("diagram.xlsx") as writer:
+            with pd.ExcelWriter(file_path) as writer:
                 pd.DataFrame(modules).to_excel(writer, sheet_name="Modules", index=False)
                 pd.DataFrame(connections).to_excel(writer, sheet_name="Connections", index=False)
-            QMessageBox.information(self, "导出成功", "数据已保存到diagram.xlsx")
+
+            QMessageBox.information(self, "导出成功", f"数据已保存到\n{file_path}")
+
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败: {str(e)}")
 
