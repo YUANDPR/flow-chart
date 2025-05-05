@@ -6,10 +6,10 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsRectItem,
     QMenu, QAction, QVBoxLayout, QWidget, QPushButton, QFileDialog, QGraphicsTextItem,
     QToolBar, QMessageBox, QInputDialog, QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QGraphicsPathItem,
-    QGraphicsLineItem
+    QGraphicsLineItem, QGraphicsPixmapItem, QSlider, QHBoxLayout, QLabel
 )
 from PyQt5.QtCore import Qt, QPointF, QLineF, QRectF, QSizeF
-from PyQt5.QtGui import QBrush, QPen, QColor, QPainter, QTransform, QCursor, QPainterPath, QIcon
+from PyQt5.QtGui import QBrush, QPen, QColor, QPainter, QTransform, QCursor, QPainterPath, QIcon, QPixmap
 from enum import Enum
 
 def resource_path(relative_path):
@@ -88,19 +88,19 @@ class LineType(Enum):
 
     def to_number(self):
         mapping = {
-            LineType.SINGLE: 1,
-            LineType.DOUBLE: 2,
-            LineType.TRIPLE: 3,
-            LineType.QUADRUPLE: 4
+            LineType.SINGLE: 4,
+            LineType.DOUBLE: 3,
+            LineType.TRIPLE: 2,
+            LineType.QUADRUPLE: 1
         }
         return mapping[self]
 
     def from_number(number):
         mapping = {
-            1: LineType.SINGLE,
-            2: LineType.DOUBLE,
-            3: LineType.TRIPLE,
-            4: LineType.QUADRUPLE
+            4: LineType.SINGLE,
+            3: LineType.DOUBLE,
+            2: LineType.TRIPLE,
+            1: LineType.QUADRUPLE
         }
         return mapping[number]
 
@@ -273,6 +273,7 @@ class Canvas(QGraphicsView):
     def __init__(self):
         super().__init__()
         self.scene = QGraphicsScene()
+        self.setRenderHint(QPainter.Antialiasing, False)
         self.setScene(self.scene)
         self.setRenderHint(QPainter.Antialiasing)
         self.setDragMode(QGraphicsView.RubberBandDrag)
@@ -280,14 +281,73 @@ class Canvas(QGraphicsView):
         self.dragging_block = None
         self.preview_line = None
         self.current_line_type = LineType.SINGLE
-        self.draw_grid()
 
-    def draw_grid(self):
-        grid_pen = QPen(QColor(220, 220, 220), 1, Qt.DotLine)
-        for x in range(-1000, 1000, 20):
-            self.scene.addLine(x, -1000, x, 1000, grid_pen)
-        for y in range(-1000, 1000, 20):
-            self.scene.addLine(-1000, y, 1000, y, grid_pen)
+        # 添加背景图片
+        self.background_image = None
+        self._load_background_image(resource_path("background.png"))  # 替换为你的图片路径
+
+        # self.draw_grid()
+
+    def fit_background_to_view(self):
+        if not self.background_image:
+            return
+
+        view_width = self.viewport().width()
+        view_height = self.viewport().height()
+
+        pixmap = self.background_image.pixmap()
+        if pixmap.isNull():
+            return
+
+        img_w = pixmap.width()
+        img_h = pixmap.height()
+        if img_w == 0 or img_h == 0:
+            return
+
+        # 按宽度拉伸，保持宽高比
+        scale = view_width / img_w
+        scaled_h = img_h * scale
+
+        # 设置缩放
+        self.background_image.setScale(scale)
+
+        # 设置图片中心为 (0, 0)，即 scene 原点
+        x = -img_w * scale / 2
+        y = -img_h * scale / 2
+        self.background_image.setPos(x, y)
+
+    def _load_background_image(self, image_path):
+        pixmap = QPixmap(image_path)
+        if not pixmap.isNull():
+            # 设置缩放模式为快速缩放，避免模糊
+            scaled_pixmap = pixmap.scaled(
+                pixmap.size() * 2,  # 可选：提高分辨率
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation  # 或 Qt.FastTransformation
+            )
+            self.background_image = QGraphicsPixmapItem(scaled_pixmap)
+            self.background_image.setZValue(-2)
+            self.scene.addItem(self.background_image)
+            self.fit_background_to_view()
+
+    def center_background_image(self):
+        if self.background_image:
+            rect = self.background_image.boundingRect()
+            scene_rect = self.scene.sceneRect()
+            x = scene_rect.width() / 2 - rect.width() / 2
+            y = scene_rect.height() / 2 - rect.height() / 2
+            self.background_image.setPos(x, y)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fit_background_to_view()
+
+    # def draw_grid(self):
+    #     grid_pen = QPen(QColor(220, 220, 220), 1, Qt.DotLine)
+    #     for x in range(-1000, 1000, 20):
+    #         self.scene.addLine(x, -1000, x, 1000, grid_pen)
+    #     for y in range(-1000, 1000, 20):
+    #         self.scene.addLine(-1000, y, 1000, y, grid_pen)
 
     def contextMenuEvent(self, event):
         # 转换坐标系并检查该位置是否有图元
@@ -413,6 +473,23 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._create_button("导入Excel", self._import))
         control_panel.setLayout(layout)
 
+        # 缩放控件
+        zoom_layout = QHBoxLayout()
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setMinimum(10)
+        self.zoom_slider.setMaximum(300)
+        self.zoom_slider.setValue(100)
+        self.zoom_slider.valueChanged.connect(self._zoom_canvas)
+
+        self.zoom_label = QLabel("100%")
+        self.zoom_label.setFixedWidth(40)
+
+        zoom_layout.addWidget(self.zoom_slider)
+        zoom_layout.addWidget(self.zoom_label)
+
+        layout.addLayout(zoom_layout)
+
+        control_panel.setLayout(layout)
         # 主界面
         central_widget = QWidget()
         main_layout = QVBoxLayout()
@@ -420,6 +497,12 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.canvas)
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+
+    def _zoom_canvas(self, value):
+        scale_factor = value / 100.0
+        self.canvas.resetTransform()
+        self.canvas.scale(scale_factor, scale_factor)
+        self.zoom_label.setText(f"{value}%")
 
     def _create_button(self, text, callback):
         btn = QPushButton(text)
@@ -494,9 +577,11 @@ class MainWindow(QMainWindow):
 
             # 读取模块
             modules_df = pd.read_excel(path, sheet_name="group")
-            self.canvas.scene.clear()
+            for item in self.canvas.scene.items():
+                if isinstance(item, (DraggableBlock, Connection)):
+                    self.canvas.scene.removeItem(item)
             self.canvas.blocks = []
-            self.canvas.draw_grid()
+            # self.canvas.draw_grid()
             id_map = {}
             placed_positions = []
             for _, row in modules_df.iterrows():
