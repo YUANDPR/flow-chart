@@ -179,13 +179,13 @@ class DraggableBlock(QGraphicsRectItem):
             self.setSelected(True)
         menu = QMenu()
         edit_action = menu.addAction("编辑工作组")
-        delete_action = menu.addAction("删除")
+        # delete_action = menu.addAction("删除")
         action = menu.exec_(event.screenPos())
 
         if action == edit_action:
             self.edit_properties()
-        if action == delete_action:
-            self.delete_block()
+        # if action == delete_action:
+        #     self.delete_block()
 
     def edit_properties(self):
         dialog = BlockEditDialog()
@@ -257,10 +257,10 @@ class Connection(QGraphicsPathItem):
 
     def contextMenuEvent(self, event):
         menu = QMenu()
-        delete_action = menu.addAction("删除")
-        action = menu.exec_(event.screenPos())
-        if action == delete_action:
-            self.delete_connection()
+        # delete_action = menu.addAction("删除")
+        # action = menu.exec_(event.screenPos())
+        # if action == delete_action:
+        #     self.delete_connection()
 
     def delete_connection(self):
         self.start_block.connections.remove(self)
@@ -349,20 +349,20 @@ class Canvas(QGraphicsView):
     #     for y in range(-1000, 1000, 20):
     #         self.scene.addLine(-1000, y, 1000, y, grid_pen)
 
-    def contextMenuEvent(self, event):
-        # 转换坐标系并检查该位置是否有图元
-        item = self.itemAt(event.pos())
-
-        if item is None:
-            # 如果当前位置没有图元，则显示画布的菜单
-            menu = QMenu()
-            new_block_action = menu.addAction("新建工作组")
-            action = menu.exec_(self.mapToGlobal(event.pos()))
-            if action == new_block_action:
-                self.create_new_block(event.pos())
-        else:
-            # 否则，允许图元自行处理其上下文菜单事件
-            super().contextMenuEvent(event)
+    # def contextMenuEvent(self, event):
+    #     # 转换坐标系并检查该位置是否有图元
+    #     item = self.itemAt(event.pos())
+    #
+    #     if item is None:
+    #         # 如果当前位置没有图元，则显示画布的菜单
+    #         menu = QMenu()
+    #         new_block_action = menu.addAction("新建工作组")
+    #         action = menu.exec_(self.mapToGlobal(event.pos()))
+    #         if action == new_block_action:
+    #             self.create_new_block(event.pos())
+    #     else:
+    #         # 否则，允许图元自行处理其上下文菜单事件
+    #         super().contextMenuEvent(event)
 
     def create_new_block(self, pos):
         dialog = BlockEditDialog()
@@ -389,13 +389,13 @@ class Canvas(QGraphicsView):
             self.scene.addItem(block)
             self.blocks.append(block)
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            item = self.itemAt(event.pos())
-            if isinstance(item, DraggableBlock):
-                self._start_connection(item)
-                return
-        super().mousePressEvent(event)
+    # def mousePressEvent(self, event):
+    #     if event.button() == Qt.LeftButton:
+    #         item = self.itemAt(event.pos())
+    #         if isinstance(item, DraggableBlock):
+    #             self._start_connection(item)
+    #             return
+    #     super().mousePressEvent(event)
 
     def _start_connection(self, block):
         self.dragging_block = block
